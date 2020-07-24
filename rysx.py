@@ -9,6 +9,7 @@ from ctypes import windll
 
 import sys
 import PX4MavCtrlV4 as PX4MavCtrl
+from fusion import KF
 
 print(sys.executable)
 isEmptyData = False
@@ -80,86 +81,37 @@ if hWnd and windows_width != width:
 if hWnd and windows_width == 0 and windows_height == 0:
     print("The UE4 window cannot be in minimum mode.")
     sys.exit(1)
-    
-    
-# 返回句柄窗口的设备环境，覆盖整个窗口，包括非客户区，标题栏，菜单，边框
-hWndDC = win32gui.GetWindowDC(hWnd)
-# 创建设备描述表
-mfcDC = win32ui.CreateDCFromHandle(hWndDC)
-# 创建内存设备描述表
-saveDC = mfcDC.CreateCompatibleDC()
-# 创建位图对象准备保存图片
-saveBitMap = win32ui.CreateBitmap()
-# 为bitmap开辟存储空间
-saveBitMap.CreateCompatibleBitmap(mfcDC, windows_width, windows_height)
 
 
+# 状态参数
+dt = timeInterval
+dt_INS = timeInterval
+dt_Vis = 2*timeInterval
+F = np.array([[1,0,0, dt,0,0, 0.5*dt*dt,0,0, 0,0,0],
+              [0,1,0, 0,dt,0, 0,0.5*dt*dt,0, 0,0,0],
+              [0,0,1, 0,0,dt, 0,0,0.5*dt*dt, 0,0,0],
+              [0,0,0, 1,0,0, dt,0,0, 0,0,0],
+              [0,0,0, 0,1,0, 0,dt,0, 0,0,0],
+              [0,0,0, 0,0,1, 0,0,dt, 0,0,0],
+              [0,0,0, 0,0,0, 1,0,0, 0,0,0],
+              [0,0,0, 0,0,0, 0,1,0, 0,0,0],
+              [0,0,0, 0,0,0, 0,0,1, 0,0,0],
+              [0,0,0, 0,0,0, 0,0,0, 1,0,0],
+              [0,0,0, 0,0,0, 0,0,0, 0,1,0],
+              [0,0,0, 0,0,0, 0,0,0, 0,0,1]
+              ])
+Q = np.identity(12) * 0.1
+# 观测参数
+H1 = np.identity(12)
+H2 = np.hstack((np.identity(3), np.zeros((9,12))))
+R1 = np.diag([0.1,0.1,0.1, 0.1,0.1,0.1, 0.1,0.1,0.1, 0.1,0.1,0.1])
+R2 = np.diag([0.01,0.01,0.01])
+# 实例化滤波器
+H = [H1, H2]
+R = [R1, R2]
+flt = KF(F, H, dt, Q, R)
 
-def procssImage():
-    #这里处理图像，并获取到速度控制指令
-    saveDC.SelectObject(saveBitMap)
-    # 0-保存整个窗口，1-只保存客户区。如果PrintWindow成功函数返回值为1
-    result = windll.user32.PrintWindow(hWnd, saveDC.GetSafeHdc(), 1)
-    signedIntsArray = saveBitMap.GetBitmapBits(True)
-    img_rgba = np.frombuffer(signedIntsArray, dtype='uint8')
-    img_rgba.shape = (windows_height, windows_width, 4)
-    img_bgr = cv2.cvtColor(img_rgba, cv2.COLOR_RGBA2RGB)
-    img_bgr = cv2.resize(img_bgr, (width, height))
-
-    p_i = calc_centroid(img_bgr)
-    #print(p_i)
-    #cv2.imshow("img", img_bgr)
-    #cv2.waitKey(1)
-
-    ctrl = controller(p_i) #返回前进，向右，向下，右偏航速度
-    return ctrl
-
-def calc_centroid(img):
-    """Get the centroid and area of green in the image"""
-
-    #hue_image = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    low_range = np.array([0,0,80])
-    high_range = np.array([100,100,255])
-    th = cv2.inRange(img, low_range, high_range)
-    dilated = cv2.dilate(th, cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE, (3, 3)), iterations=2)
-    cv2.imshow("dilated", dilated)
-    cv2.waitKey(1)
-
-    M = cv2.moments(dilated, binaryImage=True)
-    if M["m00"] >= min_prop*width*height:
-        cx = int(M["m10"] / M["m00"])
-        cy = int(M["m01"] / M["m00"])
-        return [cx, cy, M["m00"]]
-    else:
-        return [-1, -1, -1]
-
-def sat(inPwm,thres=1):
-    outPwm= inPwm
-    for i in range(len(inPwm)):
-        if inPwm[i]>thres:
-            outPwm[i] = thres
-        elif inPwm[i]<-thres:
-            outPwm[i] = -thres
-    return outPwm
-
-def controller(p_i):
-    # if the object is not in the image, search in clockwise
-    if p_i[0] < 0 or p_i[1] < 0:
-        return [0, 0, 0, 1]
-
-    # found
-    ex = p_i[0] - width / 2
-    ey = p_i[1] - height / 2
-
-    vx = 2 if p_i[2] < max_prop*width*height else 0
-    vy = 0
-    vz = K_z * ey
-    yawrate = K_yawrate * ex
-
-    return [vx, vy, vz, yawrate]
-
-ctrlLast = [0,0,0,0]
+# 主循环
 cnt = 0
 car_velocity = 10
 P, D = 1, 0.5
@@ -187,6 +139,13 @@ while True:
     car_yaw = 0
     mav_yaw = mav.uavAngEular[2]
     # print("car_vel: {}\nmav_vel: {}\n".format(car_vel, mav_vel))
+
+    # 量测数据
+    z = dict()
+    z[0] = ... + np.random.multivariate_normal(np.zeros(2*S), R_, int(T*dt/sample_time)).T
+    if cnt % 2 == 0:
+        z[1] = ...
+    x_k_k = flt.update(z)
 
     elapsed_time = time.time() - startTime
     if elapsed_time > 5 and flag == 0:
