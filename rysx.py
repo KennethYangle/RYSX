@@ -34,6 +34,10 @@ def window_enumeration_handler(hwnd, window_hwnds):
     if win32gui.GetClassName(hwnd) == "UnrealWindow":
         window_hwnds.append(hwnd)
 
+def sat(a):
+    if np.linalg.norm(a) > 1:
+        return a / np.linalg.norm(a)
+    return a
 
 #设置空白草地地形，两个窗口都设置，第一个窗口用于摄像头图像读取，第二个窗口用于效果预览
 mav.sendUE4Cmd(b'RflyChangeMapbyName VisionRingBlank')
@@ -100,21 +104,26 @@ F = np.array([[1,0,0, dt,0,0, 0.5*dt*dt,0,0, 0,0,0],
               [0,0,0, 0,0,0, 0,0,0, 0,1,0],
               [0,0,0, 0,0,0, 0,0,0, 0,0,1]
               ])
+B = np.array([[1,0,0,0],[0,1,0,0],[0,0,1,0],
+              [0,0,0,0],[0,0,0,0],[0,0,0,0],
+              [0,0,0,0],[0,0,0,0],[0,0,0,0],
+              [0,0,0,1],[0,0,0,0],[0,0,0,0]])
 Q = np.identity(12) * 0.1
 # 观测参数
 H1 = np.identity(12)
-H2 = np.hstack((np.identity(3), np.zeros((9,12))))
+H2 = np.array([[1,0,0, 0,0,0, 0,0,0, 0,0,0],[0,1,0, 0,0,0, 0,0,0, 0,0,0],[0,0,1, 0,0,0, 0,0,0, 0,0,0]])
 R1 = np.diag([0.1,0.1,0.1, 0.1,0.1,0.1, 0.1,0.1,0.1, 0.1,0.1,0.1])
 R2 = np.diag([0.01,0.01,0.01])
 # 实例化滤波器
 H = [H1, H2]
 R = [R1, R2]
-flt = KF(F, H, dt, Q, R)
+flt = KF(F, B, H, dt, Q, R)
 
 # 主循环
 cnt = 0
 car_velocity = 10
 P, D = 1, 0.5
+u = np.array([0,0,0,0])
 while True:
     # 通过sleep保持帧率
     lastTime = lastTime + timeInterval
@@ -133,19 +142,29 @@ while True:
     # 刷新皮卡位置和获取飞机位置速度
     car_pos = [3 + cnt * timeInterval * car_velocity, 0, 0]
     car_vel = [car_velocity, 0, 0]
+    car_acc = [0, 0, 0]
+    car_yaw = 0
+    car_yva = [car_yaw, 0, 0]
     mav.sendUE4Pos(100, 52, 0, car_pos, [0,0,np.pi/2])
     mav_pos = mav.uavPosNED
     mav_vel = mav.uavVelNED
-    car_yaw = 0
+    mav_acc = [0, 0, 0]
     mav_yaw = mav.uavAngEular[2]
+    mav_yva = [mav_yaw, 0, 0]
     # print("car_vel: {}\nmav_vel: {}\n".format(car_vel, mav_vel))
 
     # 量测数据
+    dlt_pos = np.array(mav_pos) - np.array(car_pos)
+    dlt_vel = np.array(mav_vel) - np.array(car_vel)
+    dlt_acc = np.array(mav_acc) - np.array(car_acc)
+    dlt_yva = np.array(mav_yva) - np.array(car_yva)
+    x_gt = np.concatenate((dlt_pos, dlt_vel, dlt_acc, dlt_yva))
     z = dict()
-    z[0] = ... + np.random.multivariate_normal(np.zeros(2*S), R_, int(T*dt/sample_time)).T
+    z[0] = x_gt + np.random.multivariate_normal(np.zeros(12), R1)
     if cnt % 2 == 0:
-        z[1] = ...
-    x_k_k = flt.update(z)
+        z[1] = dlt_pos + np.random.multivariate_normal(np.zeros(3), R2)
+    x_k_k = flt.update(sat(u), z)
+    print("x_gt: {}\n x_k_k: {}\n".format(x_gt, x_k_k))
 
     elapsed_time = time.time() - startTime
     if elapsed_time > 5 and flag == 0:
@@ -163,9 +182,8 @@ while True:
         print("开始任务")
 
     if elapsed_time > 15:
-        vel_d = [car_velocity+P*(car_pos[0]-6-mav_pos[0])+D*(car_vel[0]-mav_vel[0]), P*(car_pos[1]-mav_pos[1]), P*(car_pos[2]-2-mav_pos[2]), P*(car_yaw-mav_yaw)]
-        mav.SendVelNED(vel_d[0], vel_d[1], vel_d[2], vel_d[3])
-
+        u = np.array([car_velocity+P*(car_pos[0]-6-mav_pos[0])+D*(car_vel[0]-mav_vel[0]), P*(car_pos[1]-mav_pos[1]), P*(car_pos[2]-2-mav_pos[2]), P*(car_yaw-mav_yaw)])
+        mav.SendVelNED(u[0], u[1], u[2], u[3])
 
     if elapsed_time > 80:
         #退出Offboard控制模式
