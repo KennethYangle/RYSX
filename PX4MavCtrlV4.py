@@ -63,6 +63,10 @@ class PX4MavCtrler:
         self.isInOffboard = False
         self.isArmed = False
         self.hasSendDisableRTLRC = False
+        self.ch5 = -1
+        self.ch6 = -1
+        self.ch9 = -1
+        self.ch10 = -1
         print("Thread Started!")
 
 
@@ -300,11 +304,12 @@ class PX4MavCtrler:
                 if self.stopFlag:
                     break
                 msg = self.the_connection.recv_match(
-                    type=['ATTITUDE', 'LOCAL_POSITION_NED','HEARTBEAT'],
+                    type=['ATTITUDE', 'LOCAL_POSITION_NED','HEARTBEAT','RC_CHANNELS'],
                     blocking=False)
                 if msg is not None:
-                    #print(msg)
-                    if msg.get_type() == "ATTITUDE":
+                    # print(msg.to_dict())
+                    msg_type = msg.get_type()
+                    if msg_type == "ATTITUDE":
                         self.uavAngEular[0] = msg.roll
                         self.uavAngEular[1] = msg.pitch
                         self.uavAngEular[2] = msg.yaw
@@ -312,7 +317,7 @@ class PX4MavCtrler:
                         self.uavAngRate[0] = msg.rollspeed
                         self.uavAngRate[1] = msg.pitchspeed
                         self.uavAngRate[2] = msg.yawspeed
-                    if msg.get_type() == "LOCAL_POSITION_NED":
+                    if msg_type == "LOCAL_POSITION_NED":
                         self.uavPosNED[0] = msg.x
                         self.uavPosNED[1] = msg.y
                         self.uavPosNED[2] = msg.z
@@ -322,7 +327,7 @@ class PX4MavCtrler:
                         #print(msg.z)
                         #print(msg.vz)
                         #print("Local Pos: "+str(msg.x)+", "+str(msg.y)+", "+str(msg.z))
-                    if msg.get_type() == "HEARTBEAT":
+                    if msg_type == "HEARTBEAT":
                         isArmed = msg.base_mode & mavlink2.MAV_MODE_FLAG_SAFETY_ARMED
                         if not self.isArmed and isArmed:
                             print("PX4 Armed!")
@@ -330,6 +335,18 @@ class PX4MavCtrler:
                             print("PX4 DisArmed!")
                         self.isArmed = isArmed
                         #print("HeartBeat!")
+                    if msg_type == "RC_CHANNELS":
+                        ch5_raw = msg.chan5_raw
+                        ch6_raw = msg.chan6_raw
+                        ch9_raw = msg.chan9_raw
+                        ch10_raw = msg.chan10_raw
+
+                        self.ch5 = 0 if ch5_raw < 1300 else 1 if ch5_raw < 1700 else 2
+                        self.ch6 = 0 if ch6_raw < 1300 else 1 if ch6_raw < 1700 else 2
+                        self.ch9 = 0 if ch9_raw < 1300 else 1
+                        self.ch10 = 0 if ch10_raw < 1300 else 1
+
+                        print("ch5: {}, ch6: {}, ch9: {}, ch10: {}".format(self.ch5, self.ch6, self.ch9, self.ch10))
                 else:
                     break
         print("Mavlink Stoped.")

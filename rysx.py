@@ -164,7 +164,7 @@ while True:
     if cnt % 2 == 0:
         z[1] = dlt_pos + np.random.multivariate_normal(np.zeros(3), R2)
     x_k_k = flt.update(sat(u), z)
-    print("x_gt: {}\n x_k_k: {}\n".format(x_gt, x_k_k))
+    # print("x_gt: {}\n x_k_k: {}\n".format(x_gt, x_k_k))
 
     elapsed_time = time.time() - startTime
     if elapsed_time > 5 and flag == 0:
