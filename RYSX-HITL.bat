@@ -43,7 +43,7 @@ REM e.g., UDPSIMMODE=0 equals to UDPSIMMODE=UDP_Simple
 SET UDPSIMMODE=2
 
 REM Set the path of the RflySim tools
-SET PSP_PATH=C:\Users\16431\Desktop\HIL
+SET PSP_PATH=D:\Desktop\HIL
 
 
 
