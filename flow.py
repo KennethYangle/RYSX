@@ -15,6 +15,11 @@ class InitializeState(object):
         print("cannot takeoff, waiting for initialize.")
     def go_home(self, pos_info):
         self.stateMachine.setState(self.stateMachine.getHomewardState())
+    def flightInward(self, pos, geo_fence):
+        print("Error! The starting position is outside the geographic fence. Closed mission.")
+        return "failed"
+    def failed(self):
+        self.stateMachine.setState(self.stateMachine.getFailedState())
 
 
 # 空闲状态
@@ -28,6 +33,12 @@ class IdleState(object):
         self.stateMachine.setState(self.stateMachine.getTakeoffState())
     def go_home(self, pos_info):
         self.stateMachine.setState(self.stateMachine.getHomewardState())
+    def flightInward(self, pos, geo_fence):
+        print("Error! The starting position is outside the geographic fence. Closed mission.")
+        return "failed"
+    def failed(self):
+        self.stateMachine.setState(self.stateMachine.getFailedState())
+
 
 # 起飞状态
 class TakeoffState(object):
@@ -47,6 +58,11 @@ class TakeoffState(object):
             self.stateMachine.setState(self.stateMachine.getDockingState())
     def go_home(self, pos_info):
         self.stateMachine.setState(self.stateMachine.getHomewardState())
+    def flightInward(self, pos, geo_fence):
+        self.stateMachine.setState(self.stateMachine.getGeographicalFenceState())
+        print("Warning! The takeoff point is at the geographic fence boundary.")
+    def failed(self):
+        self.stateMachine.setState(self.stateMachine.getFailedState())
 
 
 # 对接状态
@@ -63,6 +79,11 @@ class DockingState(object):
     def approach(self, pos_info, car_velocity):
         cmd = self.stateMachine.util.DockingController(pos_info, car_velocity)
         return cmd
+    def flightInward(self, pos, geo_fence):
+        print("Warning! Out of the geographic fence during the docking.")
+        self.stateMachine.setState(self.stateMachine.getGeographicalFenceState())
+    def failed(self):
+        self.stateMachine.setState(self.stateMachine.getFailedState())
 
 
 # 返航状态
@@ -79,14 +100,65 @@ class HomewardState(object):
         if self.homeward and np.linalg.norm(np.array(pos_info["mav_pos"]) - np.array(pos_info["home_pos"])) >= 1:
             cmd = self.stateMachine.util.PostionController(pos_info)
             return cmd
+        elif np.linalg.norm(np.array(pos_info["mav_vel"]) > 2):
+            return [0,0,0,0]
         else:
             self.homeward = False
             return [0,0,1,0]
+    def flightInward(self, pos, geo_fence):
+        self.stateMachine.setState(self.stateMachine.getGeographicalFenceState())
+    def failed(self):
+        self.stateMachine.setState(self.stateMachine.getFailedState())
+
+
+# 地理围栏状态
+class GeographicalFenceState(object):
+    def __init__(self, stateMachine):
+        self.stateMachine = stateMachine
+        self.state_name = "GeographicalFenceState"
+    def initializeFinished(self):
+        pass
+    def takeoff(self, pos_info):
+        pass
+    def go_home(self, pos_info):
+        self.stateMachine.setState(self.stateMachine.getHomewardState())
+    def flightInward(self, pos, geo_fence):
+        cmd = np.array([0,0,0])
+        if pos[0] < geo_fence[0]:
+            cmd += np.array([20,0,0])
+        elif pos[0] > geo_fence[2]:
+            cmd += np.array([-20,0,0])
+        else:
+            pass
+        if pos[1] < geo_fence[1]:
+            cmd += np.array([0,20,0])
+        elif pos[1] > geo_fence[3]:
+            cmd += np.array([0,-20,0])
+        else:
+            pass
+        return [cmd[0], cmd[1], cmd[2], 0]
+    def failed(self):
+        self.stateMachine.setState(self.stateMachine.getFailedState())
+
+
+# 失败状态
+class FailedState(object):
+    def __init__(self, stateMachine):
+        self.stateMachine = stateMachine
+        self.state_name = "FailedState"
+    def failed(self):
+        print("mission failed!")
+        return "failed"
 
 
 # 状态机
 class StateMachine(object):
-    def __init__(self):
+    def __init__(self, geo_fence):
+        self.geo_fence = geo_fence
+        self.outrange_cnt = 0
+        self.outrange_cnt2 = 0
+        self.outrange_th = 100
+
         self.ch5 = -1
         self.ch6 = -1
         self.ch9 = -1
@@ -101,9 +173,12 @@ class StateMachine(object):
         self.takeoff_state = TakeoffState(self)
         self.docking_state = DockingState(self)
         self.homeward_state = HomewardState(self)
+        self.geographical_fence_state = GeographicalFenceState(self)
+        self.failed_state = FailedState(self)
 
         self.state = self.initialize_state
         self.state_name = "InitializeState"
+        self.last_state = None
 
         self.util = Utils()
 
@@ -117,6 +192,10 @@ class StateMachine(object):
         return self.docking_state
     def getHomewardState(self):
         return self.homeward_state
+    def getGeographicalFenceState(self):
+        return self.geographical_fence_state
+    def getFailedState(self):
+        return self.failed_state
     def setState(self, state):
         self.state = state
         self.state_name = state.state_name
@@ -126,7 +205,7 @@ class StateMachine(object):
         - keys: 按键状态
         - is_initialize_finish: 外部订阅的
         - pos_info: a dict contain absolute position and relative position, 
-        {"mav_pos": mav_pos, "mav_yaw": mav_yaw, "home_pos": [0,0,0], "rel_pos": dlt_pos, "rel_vel": dlt_vel, "rel_yaw": dlt_yaw}
+        {"mav_pos": mav_pos, "mav_vel": mav_vel, "mav_yaw": mav_yaw, "home_pos": [0,0,0], "rel_pos": dlt_pos, "rel_vel": dlt_vel, "rel_yaw": dlt_yaw}
         - car_velocity: use the velocity of car as base value
         """
         self.ch5, self.ch6, self.ch9, self.ch10 = keys
@@ -134,16 +213,38 @@ class StateMachine(object):
         self.homeward_key = self.ch9
         self.offboard_key = self.ch5
 
+        if not self.util.IsInFence(pos_info["mav_pos"], self.geo_fence):
+            print(pos_info["mav_pos"])
+            self.outrange_cnt += 1
+            if self.outrange_cnt > self.outrange_th:
+                self.outrange_cnt2 += 1
+                if self.outrange_cnt2 > 10*self.outrange_th:
+                    return self.state.failed()
+                # 储存上一状态
+                if self.state_name != "GeographicalFenceState":
+                    self.last_state = self.state
+                return self.state.flightInward(pos_info["mav_pos"], self.geo_fence)
+        else:
+            self.outrange_cnt = 0
+            self.outrange_cnt2 = 0
+            # 回到上一状态
+            if self.state_name == "GeographicalFenceState":
+                self.setState(self.last_state)
+
         if self.homeward_key:
             return self.state.go_home(pos_info)
         self.is_initialize_finish = is_initialize_finish
-        if not self.is_initialize_finish:
-            self.state.waitForInitialize()
-        else:
-            self.state.initializeFinished()
+
+        if self.state_name == "InitializeState":
+            if not self.is_initialize_finish:
+                self.state.waitForInitialize()
+            else:
+                self.state.initializeFinished()
+
         if self.start_key == 1:
             cmd = self.state.takeoff(pos_info)
             if cmd is not None:
                 return cmd
+
         if self.state_name == "DockingState":
             return self.state.approach(pos_info, car_velocity)

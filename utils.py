@@ -21,3 +21,9 @@ class Utils(object):
         cmd_vel = self.sat(self.P*(np.array(pos_info["rel_pos"])-np.array([2,0,2])) + self.D*np.array(pos_info["rel_vel"]), 2*car_velocity)
         cmd_yawrate = self.sat(self.P*pos_info["rel_yaw"], 2)
         return [cmd_vel[0], cmd_vel[1], cmd_vel[2], cmd_yawrate]
+
+    def IsInFence(self, pos, geo_fence):
+        if pos[0] > geo_fence[0] and pos[0] < geo_fence[2] and pos[1] > geo_fence[1] and pos[1] < geo_fence[3]:
+            return True
+        else:
+            return False

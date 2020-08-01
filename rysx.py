@@ -82,11 +82,12 @@ if hWnd and windows_width == 0 and windows_height == 0:
 # 主循环
 mav.initOffboard()
 time.sleep(0.5)
-mav.SendMavArm(True) #解锁命令
+mav.SendMavArm(True) # 解锁命令
 
 cnt = 0
 car_velocity = 10
-sm = StateMachine()
+geo_fence = [-10,-10,200,10]   # 左下右上
+sm = StateMachine(geo_fence)
 while True:
     # 通过sleep保持帧率
     lastTime = lastTime + timeInterval
@@ -120,9 +121,18 @@ while True:
     #     mav.initOffboard()
     keys = [mav.ch5, mav.ch6, mav.ch9, mav.ch10]
     is_initialize_finish = True
-    pos_info = {"mav_pos": mav_pos, "mav_yaw": mav_yaw, "home_pos": [0,0,0-2], "rel_pos": dlt_pos, "rel_vel": dlt_vel, "rel_yaw": dlt_yaw}
+    pos_info = {"mav_pos": mav_pos, "mav_vel": mav_vel, "mav_yaw": mav_yaw, "home_pos": [0,0,0-2], "rel_pos": dlt_pos, "rel_vel": dlt_vel, "rel_yaw": dlt_yaw}
     cmd = sm.update(keys, is_initialize_finish, pos_info, car_velocity)
     print(sm.state_name)
     print(cmd)
     if cmd is not None:
-        mav.SendVelNED(cmd[0], cmd[1], cmd[2], cmd[3])
+        if cmd == "failed":
+            for i in range(10):
+                mav.SendVelNED(0,0,0,0)
+                time.sleep(0.01)
+            mav.endOffboard()
+            time.sleep(1)
+            mav.stopRun()
+            break
+        else:
+            mav.SendVelNED(cmd[0], cmd[1], cmd[2], cmd[3])
