@@ -113,13 +113,16 @@ while True:
     dlt_vel = np.array(car_vel) - np.array(mav_vel)
     dlt_yaw = car_yaw - mav_yaw
 
-    if mav.ch6>=1:
+    if mav.ch5>=1:
         mav.endOffboard()
+        time.sleep(1)
     # else:
     #     mav.initOffboard()
     keys = [mav.ch5, mav.ch6, mav.ch9, mav.ch10]
     is_initialize_finish = True
-    pos_info = {"mav_pos": mav_pos, "mav_yaw": mav_yaw, "home_pos": [0,0,0], "rel_pos": dlt_pos, "rel_vel": dlt_vel, "rel_yaw": dlt_yaw}
+    pos_info = {"mav_pos": mav_pos, "mav_yaw": mav_yaw, "home_pos": [0,0,0-2], "rel_pos": dlt_pos, "rel_vel": dlt_vel, "rel_yaw": dlt_yaw}
     cmd = sm.update(keys, is_initialize_finish, pos_info, car_velocity)
+    print(sm.state_name)
+    print(cmd)
     if cmd is not None:
         mav.SendVelNED(cmd[0], cmd[1], cmd[2], cmd[3])

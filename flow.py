@@ -60,7 +60,7 @@ class DockingState(object):
         pass
     def go_home(self, pos_info):
         self.stateMachine.setState(self.stateMachine.getHomewardState())
-    def approach(pos_info, car_velocity):
+    def approach(self, pos_info, car_velocity):
         cmd = self.stateMachine.util.DockingController(pos_info, car_velocity)
         return cmd
 
@@ -70,13 +70,18 @@ class HomewardState(object):
     def __init__(self, stateMachine):
         self.stateMachine = stateMachine
         self.state_name = "HomewardState"
+        self.homeward = True
     def initializeFinished(self):
         pass
     def takeoff(self, pos_info):
         pass
     def go_home(self, pos_info):
-        cmd = self.stateMachine.util.PostionController(pos_info)
-        return cmd
+        if self.homeward and np.linalg.norm(np.array(pos_info["mav_pos"]) - np.array(pos_info["home_pos"])) >= 1:
+            cmd = self.stateMachine.util.PostionController(pos_info)
+            return cmd
+        else:
+            self.homeward = False
+            return [0,0,1,0]
 
 
 # 状态机

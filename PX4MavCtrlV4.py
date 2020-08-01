@@ -346,7 +346,7 @@ class PX4MavCtrler:
                         self.ch9 = 0 if ch9_raw < 1300 else 1
                         self.ch10 = 0 if ch10_raw < 1300 else 1
 
-                        print("ch5: {}, ch6: {}, ch9: {}, ch10: {}".format(self.ch5, self.ch6, self.ch9, self.ch10))
+                        # print("ch5: {}, ch6: {}, ch9: {}, ch10: {}".format(self.ch5, self.ch6, self.ch9, self.ch10))
                 else:
                     break
         print("Mavlink Stoped.")
