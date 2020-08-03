@@ -76,8 +76,8 @@ class DockingState(object):
         pass
     def go_home(self, pos_info):
         self.stateMachine.setState(self.stateMachine.getHomewardState())
-    def approach(self, pos_info, car_velocity):
-        cmd = self.stateMachine.util.DockingController(pos_info, car_velocity)
+    def approach(self, pos_info, pos_i, car_velocity):
+        cmd = self.stateMachine.util.DockingController(pos_info, pos_i, car_velocity)
         return cmd
     def flightInward(self, pos, geo_fence):
         print("Warning! Out of the geographic fence during the docking.")
@@ -100,7 +100,7 @@ class HomewardState(object):
         if self.homeward and np.linalg.norm(np.array(pos_info["mav_pos"]) - np.array(pos_info["home_pos"])) >= 1:
             cmd = self.stateMachine.util.PostionController(pos_info)
             return cmd
-        elif np.linalg.norm(np.array(pos_info["mav_vel"]) > 2):
+        elif np.linalg.norm(np.array(pos_info["mav_vel"])) > 2:
             return [0,0,0,0]
         else:
             self.homeward = False
@@ -200,12 +200,13 @@ class StateMachine(object):
         self.state = state
         self.state_name = state.state_name
 
-    def update(self, keys, is_initialize_finish, pos_info, car_velocity):
+    def update(self, keys, is_initialize_finish, pos_info, pos_i, car_velocity):
         """
         - keys: 按键状态
-        - is_initialize_finish: 外部订阅的
+        - is_initialize_finish: externally subscribed
         - pos_info: a dict contain absolute position and relative position, 
         {"mav_pos": mav_pos, "mav_vel": mav_vel, "mav_yaw": mav_yaw, "home_pos": [0,0,0], "rel_pos": dlt_pos, "rel_vel": dlt_vel, "rel_yaw": dlt_yaw}
+        - pos_i: the target coordinates on the image
         - car_velocity: use the velocity of car as base value
         """
         self.ch5, self.ch6, self.ch9, self.ch10 = keys
@@ -247,4 +248,4 @@ class StateMachine(object):
                 return cmd
 
         if self.state_name == "DockingState":
-            return self.state.approach(pos_info, car_velocity)
+            return self.state.approach(pos_info, pos_i, car_velocity)

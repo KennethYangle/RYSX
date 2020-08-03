@@ -17,9 +17,11 @@ class Utils(object):
         cmd_yawrate = self.sat(self.P*(0-pos_info["mav_yaw"]), 2)
         return [cmd_vel[0], cmd_vel[1], cmd_vel[2], cmd_yawrate]
 
-    def DockingController(self, pos_info, car_velocity):
+    def DockingController(self, pos_info, pos_i, car_velocity):
         cmd_vel = self.sat(self.P*(np.array(pos_info["rel_pos"])-np.array([2,0,2])) + self.D*np.array(pos_info["rel_vel"]), 2*car_velocity)
         cmd_yawrate = self.sat(self.P*pos_info["rel_yaw"], 2)
+        if pos_i[0] != -1:
+            print("pos_i: {}".format(pos_i))
         return [cmd_vel[0], cmd_vel[1], cmd_vel[2], cmd_yawrate]
 
     def IsInFence(self, pos, geo_fence):
