@@ -23,20 +23,18 @@ def procssImage(pos_i_array):
     def calc_centroid(img):
         """Get the centroid and area of green in the image"""
 
-        #hue_image = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        low_range = np.array([170,155,42])
-        high_range = np.array([174,170,48])
-        th = cv2.inRange(img, low_range, high_range)
-        dilated = cv2.dilate(th, cv2.getStructuringElement(
-            cv2.MORPH_ELLIPSE, (3, 3)), iterations=2)
-        # cv2.imshow("dilated", dilated)
+        hue_image = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        low_range = np.array([165,145,30])
+        high_range = np.array([180,200,58])
+        th = cv2.inRange(hue_image, low_range, high_range)
+        # cv2.imshow("img", img)
         # cv2.waitKey(1)
 
-        M = cv2.moments(dilated, binaryImage=True)
+        M = cv2.moments(th, binaryImage=True)
         if M["m00"] >= min_prop*width*height:
             cx = int(M["m10"] / M["m00"])
             cy = int(M["m01"] / M["m00"])
-            return [cx, cy, M["m00"]]
+            return [cx, cy, int(M["m00"])]
         else:
             return [-1, -1, -1]
 
@@ -46,7 +44,7 @@ def procssImage(pos_i_array):
     # channel = 4
     min_prop = 0.000001
 
-    time.sleep(2)
+    time.sleep(5)
     window_hwnds = []
     win32gui.EnumWindows(window_enumeration_handler, window_hwnds)
     if len(window_hwnds)>0:
@@ -122,9 +120,9 @@ if __name__ == "__main__":
     #新建一个皮卡，设置位置和坐标，使用默认样式红色
     mav.sendUE4Pos(100,52,0,[3,0,0],[0,0,np.pi/2])
     time.sleep(0.5)
-    #将焦点切换到飞机1
-    mav.sendUE4Cmd(b'RflyChangeViewKeyCmd B 1',0)
-    time.sleep(0.5)  
+    # #将焦点切换到飞机1
+    # mav.sendUE4Cmd(b'RflyChangeViewKeyCmd B 1',0)
+    # time.sleep(0.5)  
     #将视角切换到1视角（前置摄像头）
     mav.sendUE4Cmd(b'RflyChangeViewKeyCmd V 1',0)
     time.sleep(0.5)
@@ -140,7 +138,7 @@ if __name__ == "__main__":
     mav.SendMavArm(True) # 解锁命令
 
     # 主循环
-    cnt = 0
+    accuTime = 0
     car_velocity = 10
     geo_fence = [-10,-10,2000,10]   # 左下右上
     sm = StateMachine(geo_fence)
@@ -152,13 +150,13 @@ if __name__ == "__main__":
             time.sleep(sleepTime)
         else:
             lastTime = time.time()
-        cnt += 1
         calcTime = timeInterval-sleepTime
+        accuTime += (calcTime if calcTime > timeInterval else timeInterval)
         print("calcTime: {}".format(calcTime))
         #以下代码0.01s执行一次
 
         # 刷新皮卡位置和获取飞机位置速度
-        car_pos = [3 + cnt * timeInterval * car_velocity, 0, 0]
+        car_pos = [3 + accuTime * car_velocity, 0, 0]
         car_vel = [car_velocity, 0, 0]
         car_yaw = 0
         mav.sendUE4Pos(100, 52, 0, car_pos, [0,0,np.pi/2])
@@ -173,7 +171,6 @@ if __name__ == "__main__":
         dlt_yaw = car_yaw - mav_yaw
         # pos_i = procssImage()
         pos_i = [pos_i_array[0], pos_i_array[1], pos_i_array[2]]
-        print("pos_i from Array:", pos_i)
         if pos_i_array[0] == -2:
             print("waiting for initialize...")
             mav.SendVelNED(0,0,0,0) # 保活
