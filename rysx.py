@@ -132,11 +132,11 @@ if __name__ == "__main__":
     time.sleep(0.5)
     mav.SendMavArm(True) # 解锁命令
 
-    # 图像处理进程
-    pos_i_array = Array("d", [-2, -2, -2])
-    p = Process(target=procssImage, args=(pos_i_array,))
-    p.daemon = True
-    p.start()
+    # # 图像处理进程
+    # pos_i_array = Array("d", [-2, -2, -2])
+    # p = Process(target=procssImage, args=(pos_i_array,))
+    # p.daemon = True
+    # p.start()
 
     # 主循环
     cnt = 0
@@ -170,12 +170,13 @@ if __name__ == "__main__":
         dlt_vel = np.array(car_vel) - np.array(mav_vel)
         dlt_yaw = car_yaw - mav_yaw
         # pos_i = procssImage()
-        pos_i = [pos_i_array[0], pos_i_array[1], pos_i_array[2]]
-        print("pos_i from Array:", pos_i)
-        if pos_i_array[0] == -2:
-            print("waiting for initialize...")
-            mav.SendVelNED(0,0,0,0) # 保活
-            continue
+        # pos_i = [pos_i_array[0], pos_i_array[1], pos_i_array[2]]
+        # print("pos_i from Array:", pos_i)
+        # if pos_i_array[0] == -2:
+        #     print("waiting for initialize...")
+        #     mav.SendVelNED(0,0,0,0) # 保活
+        #     continue
+        pos_i = [-1, -1, -1]
 
         if mav.ch5 >= 1:
             mav.endOffboard()
